@@ -2,6 +2,7 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
+from model.backbone import fasterrcnn
 from torch.utils.data import DataLoader
 import torch.optim as optim
 from tqdm import tqdm
@@ -9,149 +10,124 @@ import logging
 from model.ANFL import MEFARG
 from dataset import *
 from util.utils import *
-from conf import get_config, set_logger, set_outdir2, set_env
-from torch.nn.utils.rnn import pad_sequence
+from conf import get_config, set_logger, set_outdir1, set_env
+from loss_fasterrcnn import *
 
 def get_dataloader(conf):
     print('==> Preparing data...')
-    train_annotation_path = '/mnt/disk1/data0/jxt/dataset/data/resized/list/number_train_data.txt'
-    val_annotation_path = '/mnt/disk1/data0/jxt/dataset/data/resized/list/number_val_data.txt'
+    train_annotation_path = 'number_train_data.txt'
+    val_annotation_path = 'number_val_data.txt'
     if conf.dataset == 'tooth':
         with open(train_annotation_path) as f:
             train_lines = f.readlines()
         with open(val_annotation_path) as f:
             val_lines = f.readlines()
-        trainset = BP4D(train_lines, train=True, val=False)
+        trainset = OMNI(train_lines, train=True, val=False)
         train_loader = DataLoader(trainset, batch_size=conf.batch_size, shuffle=False, num_workers=conf.num_workers, collate_fn=GNN_collect_fn)
-        valset = BP4D(val_lines, train=False, val=True)
+        valset = OMNI(val_lines, train=False, val=True)
         val_loader = DataLoader(valset, batch_size=conf.batch_size, shuffle=False, num_workers=conf.num_workers, collate_fn=GNN_collect_fn)
 
     return train_loader, val_loader, len(trainset), len(valset)
 
-def adjust_iou_threshold(current_epoch, total_epochs):
-    # 根据当前轮次和总轮次来动态调整 iou_threshold
-    # 以下是一个简单的线性调整示例，你可以根据需要进行修改
-    initial_iou_threshold = 0.01
-    final_iou_threshold = 0.5
-    delta = (final_iou_threshold - initial_iou_threshold) / total_epochs
-    return initial_iou_threshold + delta * current_epoch
+def modify_labels(targets):
+    modified_targets = []
+    for target in targets:
+        boxes = target['boxes']
+        labels = torch.ones(boxes.shape[0], dtype=torch.int64)  # 将所有标签设置为1（牙齿）
+        modified_targets.append({'boxes': boxes, 'labels': labels})
+    return modified_targets
+    
 # Train
 # 每个标注为一行
-def train(conf, net, train_loader, optimizer, epoch, criterion):
-    # 动态调整 iou_threshold
-    iou_threshold = adjust_iou_threshold(epoch, conf.epochs)
+def train(conf, net, model_process, train_loader, optimizer, epoch):
     losses = AverageMeter()
-    local_losses = AverageMeter()
-    class_losses = AverageMeter()
     net.train()
     train_loader_len = len(train_loader)
     for batch_idx, (inputs, label_tensors) in enumerate(tqdm(train_loader)):
         adjust_learning_rate(optimizer, epoch, conf.epochs, conf.learning_rate, batch_idx, train_loader_len)
         inputs = inputs.float()
-        boxes_batch = [label_tensor['boxes'] for label_tensor in label_tensors]
-        classes_batch = [label_tensor['labels'] - 1 for label_tensor in label_tensors]
-        # # 使用 pad_sequence 填充成相同形状
-        # boxes_tensor = pad_sequence(boxes_batch, batch_first=True, padding_value=-1)
-        # classes_tensor = pad_sequence(classes_batch, batch_first=True, padding_value=-1)
-        # boxes_tensor = torch.nn.functional.pad(boxes_tensor, (0, 0, 0, max(0, 32 - boxes_tensor.size(1))), value=-1)
-        # classes_tensor = torch.nn.functional.pad(classes_tensor, (0, max(0, 32 - classes_tensor.size(1))), value=-1)
+        modified_label_tensors = modify_labels(label_tensors)
         if torch.cuda.is_available():
             inputs = inputs.cuda()
-            boxes_batch = [boxes.cuda() for boxes in boxes_batch]
-            classes_batch = [classes.cuda() for classes in classes_batch]
+            for label_tensor in modified_label_tensors:
+                label_tensor['boxes'] = label_tensor['boxes'].cuda()
+                label_tensor['labels'] = label_tensor['labels'].cuda()
         optimizer.zero_grad()
-        # for label in label_tensors:
-        #     boxes_tensor = torch.tensor(label['boxes'])
-        #     classes_tensor = torch.tensor(label['classes'])
-        outputs = net(inputs, boxes_batch)
-        cl, anchor = outputs
-        loss, local_loss, class_loss = criterion(anchor, cl, boxes_batch, classes_batch, iou_threshold)
-        loss.backward()  # 在整个批次上进行反向传播
-        optimizer.step()  # 在整个批次上进行优化
-        losses.update(loss.data.item(), inputs.size(0) * len(label_tensors))  # 更新损失统计
-        local_losses.update(local_loss.data.item(), inputs.size(0) * len(label_tensors))
-        class_losses.update(class_loss.data.item(), inputs.size(0) * len(label_tensors))
-    return losses.avg, local_losses.avg, class_losses.avg
-def val(net, val_loader, optimizer, epoch, criterion):
-    # 动态调整 iou_threshold
-    criterion.iou_threshold = adjust_iou_threshold(epoch, conf.epochs)
-    losses = AverageMeter()
-    local_losses = AverageMeter()
-    class_losses = AverageMeter()
+        loss_dicts = model_process(inputs, modified_label_tensors, training=True)  # 使用 model_process 处理数据
+        total_loss = torch.sum(torch.stack([sum(loss_dict.values()) for loss_dict in loss_dicts]))
+        total_loss.backward()  # Perform backpropagation on the average loss
+        optimizer.step()
+        losses.update(total_loss.item(), inputs.size(0))  # Update the losses
+    mean_loss = losses.avg
+    with open('results/loss_record.txt', 'a') as f:
+        f.write(f"Epoch {epoch}: {mean_loss}\n")
+    return mean_loss
+    
+def val(net, model_process, val_loader, epoch):
     net.eval()
-    val_loader_len = len(val_loader)
+    losses = AverageMeter()
+    total_loss = 0
     all_predictions = []  # 用于存储所有预测结果
     all_targets = []  # 用于存储所有真实标签
     for batch_idx, (inputs, label_tensors) in enumerate(tqdm(val_loader)):
         with torch.no_grad():
-            adjust_learning_rate(optimizer, epoch, conf.epochs, conf.learning_rate, batch_idx, val_loader_len)
             inputs = inputs.float()
-            boxes_batch = [label_tensor['boxes'] for label_tensor in label_tensors]
-            classes_batch = [label_tensor['labels'] - 1 for label_tensor in label_tensors]
+            modified_label_tensors = modify_labels(label_tensors)
             if torch.cuda.is_available():
                 inputs = inputs.cuda()
-                boxes_batch = [boxes.cuda() for boxes in boxes_batch]
-                classes_batch = [classes.cuda() for classes in classes_batch]
-            optimizer.zero_grad()
-            outputs = net(inputs, boxes_batch)
-            cl, anchor = outputs
-            loss, local_loss, class_loss = criterion(anchor, cl, boxes_batch, classes_batch)
-            # 逐个目标生成预测
-            batch_predictions = []
-            for predicted_boxes, predicted_classes in zip(anchor, cl):
-                # predicted_boxes = anchor[i] # 假设anchor即为预测的边界框
-                # predicted_classes = cl[i]  # 假设cl为类别预测概率，取最大概率的类别作为预测结果
-                batch_predictions.append({'boxes': predicted_boxes, 'labels': predicted_classes})
-            all_predictions.extend(batch_predictions)
-            all_targets.extend(label_tensors)
-            losses.update(loss.data.item(), inputs.size(0))  # 更新损失统计
-            local_losses.update(local_loss.data.item(), inputs.size(0))
-            class_losses.update(class_loss.data.item(), inputs.size(0))
-    mean_loss = losses.avg
-    mean_local_losses = local_losses.avg
-    mean_class_losses = class_losses.avg
-    mean_f1, mean_ap, mean_precision, mean_recall = calc_metrics(all_predictions, all_targets)
-    return mean_loss, mean_local_losses, mean_class_losses, mean_f1, mean_ap, mean_precision, mean_recall
+                for label_tensor in modified_label_tensors:
+                    label_tensor['boxes'] = label_tensor['boxes'].cuda()
+                    label_tensor['labels'] = label_tensor['labels'].cuda()
+            results, local_features_list = model_process(inputs, modified_label_tensors, training=False)  # 获取检测结果
+            batch_loss = calculate_loss(results, modified_label_tensors)
+            total_loss += batch_loss
+            losses.update(total_loss.item(), inputs.size(0))
+            all_predictions.extend(results)
+            all_targets.extend(modified_label_tensors)
+    metrics = calc_metrics(all_predictions, all_targets)
+    mean_f1 = metrics['F1 Score']
+    mean_iou = metrics['mIoU']
+    mean_precision = metrics['Precision']
+    mean_recall = metrics['Recall']
+    with open('results/loss_record.txt', 'a') as f:
+        f.write(f"Epoch {epoch}: {losses.avg}\n")
+    return losses.avg, mean_f1, mean_iou, mean_precision, mean_recall
 
 def main(conf):
     start_epoch = 0
-    # data
     train_loader, val_loader, train_data_num, val_data_num = get_dataloader(conf)
-    num_classes = 18
-    train_weight = torch.from_numpy(np.loadtxt(os.path.join(conf.dataset_path, 'list', 'train_weights.txt')))
     logging.info("train_data_num: {}".format(train_data_num))
-    net = MEFARG(num_classes=conf.num_classes, neighbor_num=conf.neighbor_num, metric=conf.metric)
+    net, model_process = fasterrcnn(model_path=None)
     # resume
     if conf.resume != '':
         logging.info("Resume form | {}".format(conf.resume))
         net = load_state_dict(net, conf.resume)
-    if torch.cuda.is_available():
-        net = nn.DataParallel(net).cuda()
-        train_weight = train_weight.cuda()
-    criterion = DetectionAndNodeClassificationLoss(num_classes, train_weight)
-    # criterion = DetectionLoss(weight=train_weight)
-    optimizer = optim.AdamW(net.parameters(),  betas=(0.9, 0.999), lr=conf.learning_rate, weight_decay=conf.weight_decay)
+    optimizer = optim.Adam(net.parameters(), betas=(0.9, 0.999), lr=conf.learning_rate, weight_decay=conf.weight_decay)
     print('the init learning rate is ', conf.learning_rate)
+    # Initialize best_val_loss to a large value
+    best_val_loss = float('inf')
     # train and val
     for epoch in range(start_epoch, conf.epochs):
         lr = optimizer.param_groups[0]['lr']
         logging.info("Epoch: [{} | {} LR: {} ]".format(epoch + 1, conf.epochs, lr))
         print('Start Train')
-        train_loss, train_local_loss, train_class_loss = train(conf, net, train_loader, optimizer, epoch, criterion)
+        train_loss = train(conf, net, model_process, train_loader, optimizer, epoch)
         print('Finish Train'+'\n')
         print('Start Validation')
-        val_loss, val_local_loss, val_class_loss, val_mean_f1, val_mean_ap, val_mean_recall, val_mean_precision = val(net, val_loader, optimizer, epoch, criterion)
-        infostr = 'Epoch:  {}   train_loss: {:.5f}  train_local_loss: {:.5f}  train_class_loss: {:.5f}  val_loss: {:.5f}  val_local_loss: {:.5f}  val_class_loss: {:.5f}  val_mean_f1 {:.2f},val_mean_ap {:.2f},val_mean_recall {:.2f},val_mean_precision {:.2f}'.format(epoch + 1, train_loss, train_local_loss, train_class_loss, val_loss, val_local_loss, val_class_loss, 100. * val_mean_f1, 100. * val_mean_ap, 100. * val_mean_recall, 100. * val_mean_precision)
+        val_loss, val_mean_f1, val_mean_iou, val_mean_recall, val_mean_precision = val(net, model_process, val_loader, epoch)
+        infostr = 'Epoch:  {}   train_loss: {:.5f}  val_loss: {:.5f}  val_mean_f1 {:.2f},val_mean_iou {:.2f},val_mean_recall {:.2f},val_mean_precision {:.2f}'.format(epoch + 1, train_loss, val_loss, 100. * val_mean_f1, 100. * val_mean_iou, 100. * val_mean_recall, 100. * val_mean_precision)
         logging.info(infostr)
-        # infostr = 'F1-score-list:\n{}'.format(dataset_info(val_f1))
-        # logging.info(infostr)
-        # infostr = 'Ap-list:\n{}'.format(dataset_info(val_ap))
-        # logging.info(infostr)
-        # infostr = 'Recall-list:\n{}'.format(dataset_info(val_recall))
-        # logging.info(infostr)
-        # infostr = 'Precision-list:\n{}'.format(dataset_info(val_precision))
-        # logging.info(infostr)
-        # save checkpoints
+        # Save best model
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_checkpoint = {
+                'epoch': epoch,
+                'state_dict': net.state_dict(),
+                'optimizer': optimizer.state_dict(),
+            }
+            torch.save(best_checkpoint, os.path.join(conf['outdir'], 'best_model.pth'))
+            logging.info("Best model saved with val_loss: {:.5f}".format(best_val_loss))
+
         if (epoch+1) % 5 == 0:
             checkpoint = {
                 'epoch': epoch,
@@ -168,14 +144,11 @@ def main(conf):
         torch.save(checkpoint, os.path.join(conf['outdir'], 'cur_model.pth'))
 
 
-# ---------------------------------------------------------------------------------
-
-if __name__=="__main__":
+if __name__ == "__main__":
     conf = get_config()
     set_env(conf)
     # generate outdir name
-    set_outdir2(conf)
+    set_outdir1(conf)
     # Set the logger
     set_logger(conf)
     main(conf)
-
