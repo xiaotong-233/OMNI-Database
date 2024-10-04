@@ -14,11 +14,11 @@ from datetime import datetime
 
 parser = argparse.ArgumentParser(description='PyTorch Training')
 
-parser.add_argument('--dataset_path', default="/mnt/disk1/data0/jxt/dataset/data/allsides_10", type=str, help="experiment dataset BP4D / DISFA")
-parser.add_argument('--dataset', default="tooth", type=str, help="experiment dataset tooth")
+parser.add_argument('--dataset_path', default="", type=str, help="experiment dataset BP4D / DISFA")
+parser.add_argument('--dataset', default="", type=str, help="experiment dataset tooth")
 
 # Param
-parser.add_argument('-b','--batch-size', default=6, type=int, metavar='N', help='mini-batch size (default: 128)')
+parser.add_argument('-b','--batch-size', default=8, type=int, metavar='N', help='mini-batch size (default: 128)')
 parser.add_argument('-cl','--num-classes', default=10, type=int, metavar='N', help='num_classes')
 parser.add_argument('-lr', '--learning-rate', default=2e-5, type=float, metavar='LR', help='initial learning rate')
 parser.add_argument('-e', '--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
@@ -42,12 +42,7 @@ parser.add_argument('--seed', default=0, type=int, help='seeding for all random 
 # Experiment
 parser.add_argument('--exp-name1', default="stage1", type=str, help="experiment name for saving checkpoints")
 parser.add_argument('--exp-name2', default="stage2", type=str, help="experiment name for saving checkpoints")
-parser.add_argument('--exp-name3', default="stage2_classes13", type=str, help="experiment name for saving checkpoints")
-parser.add_argument('--exp-name4', default="stage2_classes12", type=str, help="experiment name for saving checkpoints")
-parser.add_argument('--exp-name5', default="stage2_classes10", type=str, help="experiment name for saving checkpoints")
-parser.add_argument('--exp-name6', default="stage2_classes_all10", type=str, help="experiment name for saving checkpoints")
-parser.add_argument('--exp-name7', default="stage2_classes_all10_2", type=str, help="experiment name for saving checkpoints")
-parser.add_argument('--exp-name8', default="stage2_classes_all10_resnet101_1e-5", type=str, help="experiment name for saving checkpoints")
+
 parser.add_argument('--resume', default='', type=str, metavar='path', help='path to latest checkpoint (default: none)')
 
 
@@ -153,101 +148,6 @@ def set_outdir2(conf):
 
     return conf
 
-def set_outdir3(conf):
-    default_outdir = 'results'
-    if 'timedir' in conf:
-        timestr = datetime.now().strftime('%d-%m-%Y_%I_%M-%S_%p')
-        outdir = os.path.join(default_outdir,conf.exp_name3,timestr)
-    else:
-        outdir = os.path.join(default_outdir,conf.exp_name3)
-        prefix = 'bs_'+str(conf.batch_size)+'_seed_'+str(conf.seed)+'_lr_'+str(conf.learning_rate)
-        outdir = os.path.join(outdir,prefix)
-    ensure_dir(outdir)
-    conf['outdir'] = outdir
-    shutil.copyfile("./model/MEFL.py", os.path.join(outdir,'MEFL.py'))
-    shutil.copyfile("./model/ANFL.py", os.path.join(outdir,'ANFL.py'))
-
-    return conf
-
-def set_outdir4(conf):
-    default_outdir = 'results'
-    if 'timedir' in conf:
-        timestr = datetime.now().strftime('%d-%m-%Y_%I_%M-%S_%p')
-        outdir = os.path.join(default_outdir,conf.exp_name4,timestr)
-    else:
-        outdir = os.path.join(default_outdir,conf.exp_name4)
-        prefix = 'bs_'+str(conf.batch_size)+'_seed_'+str(conf.seed)+'_lr_'+str(conf.learning_rate)
-        outdir = os.path.join(outdir,prefix)
-    ensure_dir(outdir)
-    conf['outdir'] = outdir
-    shutil.copyfile("./model/MEFL.py", os.path.join(outdir,'MEFL.py'))
-    shutil.copyfile("./model/ANFL.py", os.path.join(outdir,'ANFL.py'))
-
-    return conf
-
-def set_outdir5(conf):
-    default_outdir = 'results'
-    if 'timedir' in conf:
-        timestr = datetime.now().strftime('%d-%m-%Y_%I_%M-%S_%p')
-        outdir = os.path.join(default_outdir,conf.exp_name5,timestr)
-    else:
-        outdir = os.path.join(default_outdir,conf.exp_name5)
-        prefix = 'bs_'+str(conf.batch_size)+'_seed_'+str(conf.seed)+'_lr_'+str(conf.learning_rate)
-        outdir = os.path.join(outdir,prefix)
-    ensure_dir(outdir)
-    conf['outdir'] = outdir
-    shutil.copyfile("./model/MEFL.py", os.path.join(outdir,'MEFL.py'))
-    shutil.copyfile("./model/ANFL.py", os.path.join(outdir,'ANFL.py'))
-
-    return conf
-
-def set_outdir6(conf):
-    default_outdir = 'results'
-    if 'timedir' in conf:
-        timestr = datetime.now().strftime('%d-%m-%Y_%I_%M-%S_%p')
-        outdir = os.path.join(default_outdir,conf.exp_name6,timestr)
-    else:
-        outdir = os.path.join(default_outdir,conf.exp_name6)
-        prefix = 'bs_'+str(conf.batch_size)+'_seed_'+str(conf.seed)+'_lr_'+str(conf.learning_rate)
-        outdir = os.path.join(outdir,prefix)
-    ensure_dir(outdir)
-    conf['outdir'] = outdir
-    shutil.copyfile("./model/MEFL.py", os.path.join(outdir,'MEFL.py'))
-    shutil.copyfile("./model/ANFL.py", os.path.join(outdir,'ANFL.py'))
-
-    return conf
-
-def set_outdir7(conf):
-    default_outdir = 'results'
-    if 'timedir' in conf:
-        timestr = datetime.now().strftime('%d-%m-%Y_%I_%M-%S_%p')
-        outdir = os.path.join(default_outdir,conf.exp_name7,timestr)
-    else:
-        outdir = os.path.join(default_outdir,conf.exp_name7)
-        prefix = 'bs_'+str(conf.batch_size)+'_seed_'+str(conf.seed)+'_lr_'+str(conf.learning_rate)
-        outdir = os.path.join(outdir,prefix)
-    ensure_dir(outdir)
-    conf['outdir'] = outdir
-    shutil.copyfile("./model/MEFL.py", os.path.join(outdir,'MEFL.py'))
-    shutil.copyfile("./model/ANFL.py", os.path.join(outdir,'ANFL.py'))
-
-    return conf
-
-def set_outdir8(conf):
-    default_outdir = 'results'
-    if 'timedir' in conf:
-        timestr = datetime.now().strftime('%d-%m-%Y_%I_%M-%S_%p')
-        outdir = os.path.join(default_outdir,conf.exp_name8,timestr)
-    else:
-        outdir = os.path.join(default_outdir,conf.exp_name8)
-        prefix = 'bs_'+str(conf.batch_size)+'_seed_'+str(conf.seed)+'_lr_'+str(conf.learning_rate)
-        outdir = os.path.join(outdir,prefix)
-    ensure_dir(outdir)
-    conf['outdir'] = outdir
-    shutil.copyfile("./model/MEFL.py", os.path.join(outdir,'MEFL.py'))
-    shutil.copyfile("./model/ANFL.py", os.path.join(outdir,'ANFL.py'))
-
-    return conf
 
 # check if dir exist, if not create new folder
 def ensure_dir(dir_name):
