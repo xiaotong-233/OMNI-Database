@@ -10,17 +10,6 @@ from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence
 from torch.nn.utils.rnn import pad_sequence
 
 
-# def make_dataset(image_list, label_list, au_relation=None):
-#     len_ = len(image_list)
-#     if au_relation is not None:
-#         images = [(image_list[i].strip(),  label_list[i], au_relation[i]) for i in range(len_)]
-#     else:
-#         images = [(image_list[i].strip(),  label_list[i]) for i in range(len_)]
-#     return images
-# def make_dataset(image_list, label_list):
-#     len_ = len(image_list)
-#     images = [(image_list[i].strip(),  label_list[i]) for i in range(len_)]
-#     return images
 
 def pil_loader(path):
     with open(path, 'rb') as f:
@@ -31,7 +20,7 @@ def default_loader(path):
     return pil_loader(path)
 
 
-class BP4D(Dataset):
+class OMNI(Dataset):
     def __init__(self, annotation_lines, train=True, val=False, loader=default_loader):
     # def __init__(self, root_path, annotation_lines, train=True, val=False, stage=1, loader=default_loader):
         self.annotation_lines = annotation_lines
@@ -58,13 +47,6 @@ class BP4D(Dataset):
     def rand(self, a=0, b=1):
         return np.random.rand() * (b - a) + a
 
-        # get_random_data方法用于对图像进行随机的缩放和扭曲，并进行数据增强。
-        # 首先，读取图像并转换为RGB格式。
-        # 获取图像的大小和目标框。
-        # 如果random为False，按比例缩放图像并在图像周围添加灰条，同时调整真实框的坐标。
-        # 如果random为True，对图像进行随机缩放和扭曲，然后根据随机参数调整图像色域，并对真实框进行坐标调整。
-        # 最后，返回处理后的图像和真实框。
-
     def get_random_data(self, annotation_line, input_shape, jitter=.3, hue=.1, sat=0.7, val=0.4, random=True):
         line = annotation_line.split()
         image = Image.open(line[0])
@@ -85,25 +67,7 @@ class BP4D(Dataset):
 
         image_data = np.array(image, np.uint8)
 
-        # # 对图像进行色域变换的逻辑保持不变
-        # r = np.random.uniform(-1, 1, 3) * [hue, sat, val] + 1
-        # # ---------------------------------#
-        # #   将图像转到HSV上
-        # # ---------------------------------#
-        # hue, sat, val = cv2.split(cv2.cvtColor(image_data, cv2.COLOR_RGB2HSV))
-        # dtype = image_data.dtype
-        # # ---------------------------------#
-        # #   应用变换
-        # # ---------------------------------#
-        # x = np.arange(0, 256, dtype=r.dtype)
-        # lut_hue = ((x * r[0]) % 180).astype(dtype)
-        # lut_sat = np.clip(x * r[1], 0, 255).astype(dtype)
-        # lut_val = np.clip(x * r[2], 0, 255).astype(dtype)
-        #
-        # image_data = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
-        # image_data = cv2.cvtColor(image_data, cv2.COLOR_HSV2RGB)
-
-        # 对真实框进行调整
+        
         if len(box) > 0:
             np.random.shuffle(box)
             box[:, [0, 2]] = box[:, [0, 2]] * iw / iw
