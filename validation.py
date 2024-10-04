@@ -9,7 +9,7 @@ from model.backbone import fasterrcnn
 
 def get_dataloader(conf):
     print('==> Preparing data...')
-    test_annotation_path = '/mnt/disk1/data0/jxt/dataset/data/allsides_10/list/number_val_data.txt'
+    test_annotation_path = ''
     if conf.dataset == 'tooth':
         with open(test_annotation_path) as f:
             test_lines = f.readlines()
@@ -83,63 +83,10 @@ def validation(net, test_loader, model_path):
     return mean_f1, mean_ap, mean_precision, mean_recall, all_f1_scores, all_aps, all_recalls, all_precisions
 
 
-# def val(net, val_loader, criterion, model_path, evaluate_metrics=False):
-#     first_stage_model, model_process = fasterrcnn(model_path)
-#     checkpoint = torch.load(model_path)
-#     if 'state_dict' in checkpoint:
-#         first_stage_model.load_state_dict(checkpoint['state_dict'])
-#     else:
-#         first_stage_model.load_state_dict(checkpoint)
-#     first_stage_model.eval()
-#     losses = AverageMeter()
-#     neighbor_num = 5
-#     net.eval()
-#     all_predictions = []  # 用于存储所有预测结果
-#     all_boxes = []
-#     all_targets = []  # 用于存储所有真实标签
-#     val_losses = []
-#     for batch_idx, (inputs, label_tensors) in enumerate(tqdm(val_loader)):
-#         with torch.no_grad():
-#             processed_outputs, cropped_images = [], []
-#             for image, target in zip(inputs, label_tensors):
-#                 processed_output, cropped_image = model_process([image], [target], training=False)
-#                 # 判断框的样本数是否小于neighbor_num，如果是，则跳过这个样本
-#                 num_boxes = processed_output[0]['boxes'].size(0)
-#                 if num_boxes < neighbor_num:
-#                     continue
-#                 processed_outputs.append(processed_output)
-#                 cropped_images.append(cropped_image)
-#             inputs = inputs.float()
-#             boxes_batch = [label_tensor[0]['boxes'].clone().detach() for label_tensor in processed_outputs]
-#             box_batch = [label_tensor['boxes'].clone().detach() for label_tensor in label_tensors]
-#             classes_batch = [label_tensor['classes'].clone().detach() - 1 for label_tensor in label_tensors]
-#             if torch.cuda.is_available():
-#                 inputs = inputs.cuda()
-#                 boxes_batch = [boxes.cuda() for boxes in boxes_batch]
-#                 box_batch = [box.cuda() for box in box_batch]
-#                 classes_batch = [classes.cuda() for classes in classes_batch]
-#             outputs = net(inputs, cropped_images)
-#             cl = outputs
-#             loss = criterion(cl, classes_batch, boxes_batch, box_batch)
-#             losses.update(loss.data.item(), inputs.size(0))  # 更新损失统计
-#             val_losses.append(loss.item())
-#             # 逐个目标生成预测
-#             batch_predictions = []
-#             batch_boxes = []
-#             for predicted_classes, predicted_boxes in zip(cl, boxes_batch):
-#                 batch_predictions.append(predicted_classes)
-#                 batch_boxes.append(predicted_boxes)
-#             filtered_indices = [i for i, output in enumerate(processed_outputs) if output[0]['boxes'].size(0) >= neighbor_num]
-#             all_predictions.extend([batch_predictions[i] for i in filtered_indices])
-#             all_boxes.extend([batch_boxes[i]for i in filtered_indices])
-#             all_targets.extend([label_tensors[i] for i in filtered_indices])
-#     mean_f1, mean_ap, mean_precision, mean_recall, all_f1_scores, all_aps, all_recalls, all_precisions = calc_metrics(all_predictions, all_boxes, all_targets)
-#     return mean_f1, mean_ap, mean_precision, mean_recall, all_f1_scores, all_aps, all_recalls, all_precisions
-
 
 def main(conf):
-    model_path = 'results/stage1/bs_8_seed_0_lr_0.0001/best_model.pth'
-    mefarg_model_path = 'results/stage2_classes10/bs_6_seed_0_lr_2e-05/epoch50_model.pth'  # 更改为 MEFARG 模型路径
+    model_path = ''
+    mefarg_model_path = ''  
     num_classes = 10
     test_loader, test_data_num = get_dataloader(conf)
     logging.info("test_data_num: {}".format(test_data_num))
