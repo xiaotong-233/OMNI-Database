@@ -15,16 +15,16 @@ from loss_fasterrcnn import *
 
 def get_dataloader(conf):
     print('==> Preparing data...')
-    train_annotation_path = '/mnt/disk1/data0/jxt/dataset/data/allsides_10/list/number_train_data.txt'
-    val_annotation_path = '/mnt/disk1/data0/jxt/dataset/data/allsides_10/list/number_val_data.txt'
+    train_annotation_path = 'number_train_data.txt'
+    val_annotation_path = 'number_val_data.txt'
     if conf.dataset == 'tooth':
         with open(train_annotation_path) as f:
             train_lines = f.readlines()
         with open(val_annotation_path) as f:
             val_lines = f.readlines()
-        trainset = BP4D(train_lines, train=True, val=False)
+        trainset = OMNI(train_lines, train=True, val=False)
         train_loader = DataLoader(trainset, batch_size=conf.batch_size, shuffle=False, num_workers=conf.num_workers, collate_fn=GNN_collect_fn)
-        valset = BP4D(val_lines, train=False, val=True)
+        valset = OMNI(val_lines, train=False, val=True)
         val_loader = DataLoader(valset, batch_size=conf.batch_size, shuffle=False, num_workers=conf.num_workers, collate_fn=GNN_collect_fn)
 
     return train_loader, val_loader, len(trainset), len(valset)
@@ -36,13 +36,13 @@ def modify_labels(targets):
         labels = torch.ones(boxes.shape[0], dtype=torch.int64)  # 将所有标签设置为1（牙齿）
         modified_targets.append({'boxes': boxes, 'labels': labels})
     return modified_targets
+    
 # Train
 # 每个标注为一行
 def train(conf, net, model_process, train_loader, optimizer, epoch):
     losses = AverageMeter()
     net.train()
     train_loader_len = len(train_loader)
-    # model_process = fasterrcnn()
     for batch_idx, (inputs, label_tensors) in enumerate(tqdm(train_loader)):
         adjust_learning_rate(optimizer, epoch, conf.epochs, conf.learning_rate, batch_idx, train_loader_len)
         inputs = inputs.float()
@@ -55,7 +55,6 @@ def train(conf, net, model_process, train_loader, optimizer, epoch):
         optimizer.zero_grad()
         loss_dicts = model_process(inputs, modified_label_tensors, training=True)  # 使用 model_process 处理数据
         total_loss = torch.sum(torch.stack([sum(loss_dict.values()) for loss_dict in loss_dicts]))
-        # average_loss = total_loss / len(loss_dicts)  # Calculate the mean loss for the batch
         total_loss.backward()  # Perform backpropagation on the average loss
         optimizer.step()
         losses.update(total_loss.item(), inputs.size(0))  # Update the losses
@@ -63,11 +62,11 @@ def train(conf, net, model_process, train_loader, optimizer, epoch):
     with open('results/loss_record.txt', 'a') as f:
         f.write(f"Epoch {epoch}: {mean_loss}\n")
     return mean_loss
+    
 def val(net, model_process, val_loader, epoch):
     net.eval()
     losses = AverageMeter()
     total_loss = 0
-    # model_process = fasterrcnn()
     all_predictions = []  # 用于存储所有预测结果
     all_targets = []  # 用于存储所有真实标签
     for batch_idx, (inputs, label_tensors) in enumerate(tqdm(val_loader)):
@@ -83,10 +82,8 @@ def val(net, model_process, val_loader, epoch):
             batch_loss = calculate_loss(results, modified_label_tensors)
             total_loss += batch_loss
             losses.update(total_loss.item(), inputs.size(0))
-            # losses = batch_loss.item()
             all_predictions.extend(results)
             all_targets.extend(modified_label_tensors)
-    # mean_loss = total_loss / len(val_loader)
     metrics = calc_metrics(all_predictions, all_targets)
     mean_f1 = metrics['F1 Score']
     mean_iou = metrics['mIoU']
