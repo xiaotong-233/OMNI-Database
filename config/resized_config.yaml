@@ -1,0 +1,3 @@
+#dataset_path: '/home/jxt/resized_2'
+num_classes: 10
+neighbor_num: 5
