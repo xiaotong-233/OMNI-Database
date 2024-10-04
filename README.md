@@ -1,4 +1,4 @@
-![image](https://github.com/user-attachments/assets/0fa77caa-6e6c-4bbf-9f66-f3e7a64dc7de)# Oral Imaging for Malocclusion Issues Identification: Dataset, Deep Learning Models and Benchmark
+# Oral Imaging for Malocclusion Issues Identification: Dataset, Deep Learning Models and Benchmark
 ## Introduction
 This is the official code repo of *Oral Imaging for Malocclusion Issues Identification: Dataset, Deep Learning Models and Benchmark*.
 
