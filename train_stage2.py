@@ -228,4 +228,11 @@ def main(conf):
         }
         torch.save(checkpoint, os.path.join(conf['outdir'], 'cur_model.pth'))
 
-
+if __name__=="__main__":
+    conf = get_config()
+    set_env(conf)
+    # generate outdir name
+    set_outdir5(conf)
+    # Set the logger
+    set_logger(conf)
+    main(conf)
